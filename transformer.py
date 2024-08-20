@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -178,7 +177,4 @@ class Transformer(nn.Module):
         trgt = self.decoder(trgt, encoder_output)
 
         out = self.lm_head(trgt)
-        return out
-
-
-    
+        return out 
