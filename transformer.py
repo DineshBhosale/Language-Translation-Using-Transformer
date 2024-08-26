@@ -20,6 +20,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('p_e', p_e)
 
     def forward(self, x):
+        x = x * math.sqrt(self.embd_sze)
         return x + self.p_e[:, :x.size(1)]
 
 class Head(nn.Module):
@@ -163,14 +164,17 @@ class Transformer(nn.Module):
 
         self.lm_head = nn.Linear(embd_sze, tgt_vocab_sze)
     
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    def encode(self, src, src_mask):
         e_output = self.position_embedding(self.enc_token_embedding(src))
         for encoder in self.encoder:
             e_output = encoder(e_output, src_mask)
 
+        return e_output
+    
+    def decode(self, tgt, e_output, src_mask, tgt_mask):
         d_output = self.position_embedding(self.dec_token_embedding(tgt))
         for decoder in self.decoder:
             d_output = decoder(d_output, e_output, src_mask, tgt_mask)
 
-        out = self.lm_head(d_output)
-        return out 
+        d_output = self.lm_head(d_output)
+        return d_output

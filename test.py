@@ -73,68 +73,40 @@ test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1)
 
 model = Transformer(embd_sze=512, src_vocab_sze=src_vocab_size, tgt_vocab_sze=tgt_vocab_size, max_seq_len=max_seq_length)
 model.to(device)
-#model.load_state_dict(torch.load("./model.pt", weights_only=True))
 print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameters())/1e6))
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-loss_func = torch.nn.CrossEntropyLoss().to(device)
-epochs = 2
+model.load_state_dict(torch.load("./model.pt", weights_only=True))
+model.to(device)
+model.eval()
+for i, (src, tgt) in enumerate(test_loader):
+    src, tgt = src.to(device), tgt
 
-# model training
-for epoch in range(1, epochs+1):
-    start_time = timer()
-    train_loss = 0
-    model.train()
-    # train loop
-    for i, (src, tgt) in enumerate(train_loader):
-        src, tgt = src.to(device), tgt.to(device)
+    tgt_input = torch.LongTensor([src_stoi_vocab['<pad>']] * max_seq_length).to(device)
+    tgt_input[0] = tgt_stoi_vocab['[start]']
+    tgt_input =  tgt_input.reshape(1, -1)
 
-        tgt_input = tgt[:, :-1]
-        tgt_output = tgt[:, 1:]
-
+    src_mask, tgt_mask = make_mask(src, tgt_input, src_stoi_vocab, tgt_stoi_vocab, device)
+    e_output = model.encode(src, src_mask)
+    op = [tgt_stoi_vocab['[start]']]
+    for j in range(max_seq_length-1):
         src_mask, tgt_mask = make_mask(src, tgt_input, src_stoi_vocab, tgt_stoi_vocab, device)
-
-        # zero out gradients before every batch
-        optimizer.zero_grad()
-
-        # forward pass
-        e_output = model.encode(src, src_mask)
         output = model.decode(tgt_input, e_output, src_mask, tgt_mask)
+        output = F.softmax(output, dim=-1)
+        output = torch.argmax(output, dim=-1) # (1, L)
+        last_word_id = output[0][j].item()
+        #print(last_word_id)
+        if last_word_id == 0:
+            continue
+        tgt_input[0][j+1] = last_word_id
 
-        # calculate loss
-        loss = loss_func(output.view(-1, output.size(-1)), tgt_output.reshape(tgt_output.shape[0] * tgt_output.shape[1]))
-        # backward pass
-        loss.backward()
+        #print(next_word)
+        #probs = F.softmax(output, dim=-1)
+        #idx_next = torch.argmax(probs, dim=-1)
 
-        # gradient descent
-        optimizer.step()
-        train_loss += loss.item()
+        # if idx_next[0][j].item() == tgt_stoi_vocab['[end]']:
+        #     break
 
-    # valdition loop
-    val_loss = 0
-    model.eval()
-    with torch.no_grad():
-        for i, (src, tgt) in enumerate(val_loader):
-            src, tgt = src.to(device), tgt.to(device)
-            tgt_input = tgt[:, :-1]
-            tgt_output = tgt[:, 1:]
-
-            src_mask, tgt_mask = make_mask(src, tgt_input, src_stoi_vocab, tgt_stoi_vocab, device)
-
-            # zero out gradients before every batch
-            optimizer.zero_grad()
-
-            # forward pass
-            e_output = model.encode(src, src_mask)
-            output = model.decode(tgt_input, e_output, src_mask, tgt_mask)
-
-            # calculate loss
-            loss = loss_func(output.view(-1, output.size(-1)), tgt_output.reshape(tgt_output.shape[0] * tgt_output.shape[1]))
-            
-            val_loss += loss.item()
-    end_time = timer()
-
-    print("Epoch: {0} | Training Loss: {1} | Validation Loss: {2} | Epoch Time: {3}s".\
-          format(epoch, round(train_loss/len(train_loader), 4), round(val_loss / len(val_loader), 4), round(end_time-start_time, 4)))
-
-torch.save(model.state_dict(), "./model.pt")
+        #tgt_input[0][j+1] = next_word
+        op.append(last_word_id)
+        
+    print(' '.join(src_itos_vocab[o] for o in src.tolist()[0] if src_itos_vocab[o] != '<pad>' ) + "\t\t\t\t" + ' '.join(tgt_itos_vocab[o] for o in op))
