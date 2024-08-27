@@ -4,28 +4,27 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, block_sze, embd_sze):
+    def __init__(self, block_sze, embd_sze, dropout=0.2):
         super(PositionalEncoding, self).__init__()
         
         self.block_sze = block_sze
         self.embd_sze = embd_sze
-        p_e = torch.zeros(self.block_sze, self.embd_sze)
+        self.dropout = nn.Dropout(dropout)
+
         positions = torch.arange(self.block_sze, dtype=torch.float).unsqueeze(1)
         den = torch.exp(- torch.arange(0, self.embd_sze, 2) * math.log(10000) / self.embd_sze)
-
-        p_e[:, 0::2] = torch.sin(positions * den)
-        p_e[:, 1::2] = torch.cos(positions * den)
-        p_e = p_e.unsqueeze(0)
-
-        self.register_buffer('p_e', p_e)
+        position_embedding = torch.zeros(self.block_sze, self.embd_sze)
+        position_embedding[:, 0::2] = torch.sin(positions * den)
+        position_embedding[:, 1::2] = torch.cos(positions * den)
+        position_embedding = position_embedding.unsqueeze(0)
+        self.register_buffer('pos_embedding', position_embedding)
 
     def forward(self, x):
         x = x * math.sqrt(self.embd_sze)
-        return x + self.p_e[:, :x.size(1)]
+        return self.dropout(x + self.pos_embedding[:, :x.size(1)])
 
 class Head(nn.Module):
-    # single masked self-attention head
-    def __init__(self, block_sze, embd_sze, head_size, dropout=0.2):
+    def __init__(self, embd_sze, head_size, dropout=0.2):
         super(Head, self).__init__()
         self.key = nn.Linear(embd_sze, head_size)
         self.query = nn.Linear(embd_sze, head_size)
@@ -33,26 +32,22 @@ class Head(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, Q, K, V, mask = None):
-
-        #B, T, C = Q.shape
-
         k = self.key(K) # (B, T, C) -> (B, T, hs)
         q = self.query(Q)   # (B, T, C) -> (B, T, hs)
         v = self.value(V)   # (B, T, C) -> (B, T, hs)
-        wei = q @ k.transpose(-2, -1) * (k.shape[-1])**(-0.5)    # (B, T, C) @ (B, C, T) -> (B, T, T)
+        attn_scores = q @ k.transpose(-2, -1) * (k.shape[-1])**(-0.5)    # (B, T, C) @ (B, C, T) -> (B, T, T)
         if mask is not None:
-            wei = wei.masked_fill(mask==0, float('-inf'))
-        wei = F.softmax(wei, dim=-1)
-        wei = self.dropout(wei)
-        out = wei @ v   # (B, T, T) @ (B, T, hs) -> (B, T, hs) 
+            attn_scores = attn_scores.masked_fill(mask==0, float('-inf'))
+
+        attn_scores = F.softmax(attn_scores, dim=-1)
+        attn_scores = self.dropout(attn_scores)
+        out = attn_scores @ v   # (B, T, T) @ (B, T, hs) -> (B, T, hs) 
         return out
 
 class MultiHeadAttention(nn.Module):
-    """ multiple heads of self-attention in parallel """
-
-    def __init__(self, block_sze, embd_sze, num_heads, head_size, dropout=0.2):
+    def __init__(self, embd_sze, num_heads, head_size, dropout=0.2):
         super(MultiHeadAttention, self).__init__()
-        self.heads = nn.ModuleList([Head(block_sze, embd_sze, head_size, dropout=dropout) for _ in range(num_heads)])
+        self.heads = nn.ModuleList([Head(embd_sze, head_size, dropout=dropout) for _ in range(num_heads)])
         self.proj = nn.Linear(num_heads * head_size, embd_sze)
         self.dropout = nn.Dropout(dropout)
     
@@ -62,11 +57,9 @@ class MultiHeadAttention(nn.Module):
         return out
     
 class MultiCrossHeadAttention(nn.Module):
-    """ multiple heads of self-attention in parallel """
-
-    def __init__(self, block_sze, embd_sze, num_heads, head_size, dropout=0.2):
+    def __init__(self, embd_sze, num_heads, head_size, dropout=0.2):
         super(MultiCrossHeadAttention, self).__init__()
-        self.heads = nn.ModuleList([Head(block_sze, embd_sze, head_size, dropout=dropout) for _ in range(num_heads)])
+        self.heads = nn.ModuleList([Head(embd_sze, head_size, dropout=dropout) for _ in range(num_heads)])
         self.proj = nn.Linear(num_heads * head_size, embd_sze)
         self.dropout = nn.Dropout(dropout)
     
@@ -76,8 +69,6 @@ class MultiCrossHeadAttention(nn.Module):
         return out
 
 class FeedFoward(nn.Module):
-    "feed forward network"
-
     def __init__(self, n_embd, dropout=0.2):
         super(FeedFoward, self).__init__()
         self.net = nn.Sequential(
@@ -110,12 +101,12 @@ class LayerNorm(nn.Module):
         return self.gamma * X_hat + self.beta
 
 class Encoder(nn.Module):
-    def __init__(self, block_sze, embd_sze, num_heads):
+    def __init__(self, embd_sze, num_heads):
         # embd_sze: number of embeddings in embedding dimension, num_heads: the number of heads 
         super(Encoder, self).__init__()
 
         head_size = embd_sze // num_heads
-        self.sa = MultiHeadAttention(block_sze, embd_sze, num_heads, head_size)
+        self.sa = MultiHeadAttention(embd_sze, num_heads, head_size)
         self.ln1 = LayerNorm(embd_sze)
         self.ffwd = FeedFoward(embd_sze)
         self.ln2 = LayerNorm(embd_sze)
@@ -126,14 +117,14 @@ class Encoder(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    def __init__(self, block_sze, embd_sze, num_heads):
+    def __init__(self, embd_sze, num_heads):
         super(Decoder, self).__init__()
 
         head_size = embd_sze // num_heads
-        self.sa = MultiHeadAttention(block_sze, embd_sze, num_heads, head_size)
+        self.sa = MultiHeadAttention(embd_sze, num_heads, head_size)
         self.ln1 = LayerNorm(embd_sze)
         
-        self.ca = MultiCrossHeadAttention(block_sze, embd_sze, num_heads, head_size)
+        self.ca = MultiCrossHeadAttention(embd_sze, num_heads, head_size)
         self.ln2 = LayerNorm(embd_sze)
 
         self.ffwd = FeedFoward(embd_sze)
@@ -156,13 +147,14 @@ class Transformer(nn.Module):
         # encoder
         self.enc_token_embedding = nn.Embedding(src_vocab_sze, embd_sze)
 
-        self.encoder = nn.ModuleList([Encoder(src_vocab_sze, embd_sze, self.num_heads) for _ in range(self.n_layers)])
+        self.encoder = nn.ModuleList([Encoder(embd_sze, self.num_heads) for _ in range(self.n_layers)])
         
         # decoder
         self.dec_token_embedding = nn.Embedding(tgt_vocab_sze, embd_sze)
-        self.decoder = nn.ModuleList([Decoder(tgt_vocab_sze, embd_sze, self.num_heads) for _ in range(self.n_layers)])
+        self.decoder = nn.ModuleList([Decoder(embd_sze, self.num_heads) for _ in range(self.n_layers)])
 
         self.lm_head = nn.Linear(embd_sze, tgt_vocab_sze)
+        self.softmax = nn.LogSoftmax(dim=-1)
     
     def encode(self, src, src_mask):
         e_output = self.position_embedding(self.enc_token_embedding(src))
@@ -175,6 +167,6 @@ class Transformer(nn.Module):
         d_output = self.position_embedding(self.dec_token_embedding(tgt))
         for decoder in self.decoder:
             d_output = decoder(d_output, e_output, src_mask, tgt_mask)
+        d_output = self.softmax(self.lm_head(d_output))
 
-        d_output = self.lm_head(d_output)
         return d_output
