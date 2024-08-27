@@ -1,3 +1,8 @@
+'''
+TO DO
+1. weight init
+'''
+
 import math
 import torch
 import torch.nn as nn
