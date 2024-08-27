@@ -3,6 +3,97 @@ import torch
 import torch.utils.data as data
 from unicodedata import normalize
 
+class Vocabulary():
+    def __init__(self, type):
+        self.type = type
+        self.pad_id = 0
+        self.bos_id = 1
+        self.eos_id = 2
+        self.unkn_id = 3
+        self.stoi = {} 
+        self.itos = {}
+
+    def generate_vocabulary(self, l_sentences):
+        counter = {}
+        for sentence in l_sentences:
+            for word in sentence:
+                counter[word] = 1 + counter.get(word, 0)
+
+        counter = sorted(counter, key = counter.values, reverse=True)
+        
+        for word in counter.keys():
+            self.stoi[word] = len(self.stoi) + 1
+            self.itos[len(self.itos) + 1] = word
+                
+    def encode_str(self, sentence):
+        tokens = []
+        for word in sentence.split():
+            if word not in self.stoi:
+                token = self.unkn_id
+            elif word == '[start]':
+                token = self.bos_id
+            elif word == '[end]':
+                token = self.eos_id
+            else:    
+                token = self.stoi[word]         
+
+            tokens.append(token)
+        return tokens
+
+    def decode_tokens(self, tokens):
+        ret = ""
+        for token in tokens:
+            if token in self.itos:
+                ret += self.itos[token] + " "
+            else:
+                ret += "unknown " 
+        return ret
+
+    def get_mask(self, sequence, device=None):
+        mask = (sequence != self.pad_id).unsqueeze(1)
+
+        if self.type == "tgt":
+            attn_mask = torch.tril(torch.ones((1, sequence.shape[1], sequence.shape[1]), dtype=torch.bool)).to(device)
+            mask = mask & attn_mask
+            
+        return mask
+
+    def save_stoi_vocab(self):
+        f = open("./{0}-stoi-vocab.txt".format(self.type), "w")
+        for word in self.stoi:
+            line = word + ":" + str(self.stoi[word])
+            f.write(line)
+        f.close()
+
+    def save_itos_vocab(self):
+        f = open("./{0}-itos-vocab.txt".format(self.type), "w")
+        for token in self.itos:
+            line = token + ":" + str(self.itos[token])
+            f.write(line)
+        f.close()
+        
+    def read_stoi_vocab(self, path):
+        f = open(path, "r")
+        while True:
+            line = f.readline()
+            if not line:
+                break
+                
+            vals = line.split(":")
+            self.stoi[vals[0]] = int(vals[1])
+        f.close()
+
+    def read_itos_vocab(self, path):
+        f = open(path, "r")
+        while True:
+            line = f.readline()
+            if not line:
+                break
+                
+            vals = line.split(":")
+            self.itos[vals[0]] = int(vals[1])
+        f.close()
+
 class TranslationDataset(data.Dataset):
     def __init__(self, src_tokens, tgt_tokens, max_len):
         super().__init__()
@@ -39,7 +130,7 @@ def clean_text(text):
     return text
 
 def clean_prepare_text(text):
-    text = '[start]' + clean_text(text) + '[end]'
+    text = '[start] ' + clean_text(text) + ' [end]'
     return text
 
 def make_mask(src, tgt, src_vocab, tgt_vocab, device):
