@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
-from transformer import *
-from dataloading import *
+from utils.transformer import *
+from utils.dataloading import *
 from tqdm import tqdm
 from timeit import default_timer as timer
 
@@ -12,14 +12,15 @@ torch.mps.set_per_process_memory_fraction(0.0)
 src_tokens = []
 tgt_tokens = []
 
-df_src = pd.read_csv("./small_vocab_en.csv", sep='\t', header = None)
+df_src = pd.read_csv("./data/small_vocab_en.csv", sep='\t', header = None)
 df_src = df_src.rename(columns={0:"src"})
 
-df_tgt = pd.read_csv('./small_vocab_fr.csv', sep='\t', header = None)
+df_tgt = pd.read_csv('./data/small_vocab_fr.csv', sep='\t', header = None)
 df_tgt = df_tgt.rename(columns={0:"tgt"})
 
 df = pd.concat([df_src, df_tgt], axis=1)
 df = df.sample(frac=1, random_state=42)
+
 print("Sample Data")
 print("Source Language\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tTarget Language")
 print_sample_data(df, sample=5)
@@ -64,7 +65,7 @@ print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameter
 
 model.to(device)
 model.eval()
-model.load_state_dict(torch.load("./model-iteration-01.pt", weights_only=True))
+model.load_state_dict(torch.load("./weights/model-iteration-01.pt", weights_only=True))
 
 def inference(e_output, src_mask):
     tgt_input = torch.LongTensor([vocab_t.pad_id] * max_seq_length).to(device)

@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
-from transformer import *
-from dataloading import *
+from utils.transformer import *
+from utils.dataloading import *
 from tqdm import tqdm
 from timeit import default_timer as timer
 
@@ -24,7 +24,7 @@ model.to(device)
 model.eval()
 print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameters())/1e6))
 
-model.load_state_dict(torch.load("./model-iteration-01.pt", weights_only=True))
+model.load_state_dict(torch.load("./weights/model-iteration-01.pt", weights_only=True))
 
 def inference(e_output, src_mask):
     tgt_input = torch.LongTensor([vocab_t.pad_id] * max_seq_length).to(device)

@@ -73,17 +73,17 @@ class Vocabulary():
 
     def save_vocab(self):
 
-        with open('./{0}-stoi-vocab.pkl'.format(self.type), 'wb') as f:
+        with open('./vocab/{0}-stoi-vocab.pkl'.format(self.type), 'wb') as f:
             pickle.dump(self.stoi, f)
 
-        with open('./{0}-itos-vocab.pkl'.format(self.type), 'wb') as f:
+        with open('./vocab/{0}-itos-vocab.pkl'.format(self.type), 'wb') as f:
             pickle.dump(self.itos, f)
         
     def read_vocab(self):
-        with open('./{0}-stoi-vocab.pkl'.format(self.type), 'rb') as f:
+        with open('./vocab/{0}-stoi-vocab.pkl'.format(self.type), 'rb') as f:
             self.stoi = pickle.load(f)
 
-        with open('./{0}-itos-vocab.pkl'.format(self.type), 'rb') as f:
+        with open('./vocab/{0}-itos-vocab.pkl'.format(self.type), 'rb') as f:
             self.itos = pickle.load(f)
 
 class TranslationDataset(data.Dataset):
@@ -101,3 +101,18 @@ class TranslationDataset(data.Dataset):
         src_data = self.src_tokens[index] + [self.pad_id] * (self.max_len - len(self.src_tokens[index])) # post zero padding
         tgt_data = self.tgt_tokens[index] + [self.pad_id] * (self.max_len - len(self.tgt_tokens[index])) # post zero padding
         return torch.LongTensor(src_data), torch.LongTensor(tgt_data)
+
+def clean_text(text):
+    text = normalize('NFD', text.lower())
+    text = re.sub('[^A-Za-z ]+', ' ', text)
+    return text
+
+def clean_prepare_text(text):
+    text = '[start] ' + clean_text(text) + ' [end]'
+    return text
+
+def print_sample_data(df, sample):
+    for i, (src_sent, tgt_sent) in enumerate(zip(df['src'], df['tgt'])):
+        if i == sample:
+            break 
+        print(src_sent + "\t\t\t" + tgt_sent)
