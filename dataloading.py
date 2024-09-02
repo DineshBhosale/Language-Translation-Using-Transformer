@@ -1,5 +1,6 @@
 import re
 import torch
+import pickle
 import torch.utils.data as data
 from unicodedata import normalize
 
@@ -10,21 +11,27 @@ class Vocabulary():
         self.bos_id = 1
         self.eos_id = 2
         self.unkn_id = 3
-        self.stoi = {} 
-        self.itos = {}
+        self.stoi = {'<pad>': self.pad_id, '[start]': self.bos_id, '[end]': self.eos_id} 
+        self.itos = {self.pad_id: '<pad>', self.bos_id: '[start]', self.eos_id: '[end]'}
 
     def generate_vocabulary(self, l_sentences):
         counter = {}
         for sentence in l_sentences:
-            for word in sentence:
-                counter[word] = 1 + counter.get(word, 0)
+            words = sentence.split()
+            for word in words:
+                if word == '[start]':
+                    continue
+                elif word == '[end]':
+                    continue
+                else:
+                    counter[word] = 1 + counter.get(word, 0)
 
-        counter = sorted(counter, key = counter.values, reverse=True)
+        counter = dict(sorted(counter.items(), key = lambda x: x[1], reverse=True))
         
         for word in counter.keys():
             self.stoi[word] = len(self.stoi) + 1
             self.itos[len(self.itos) + 1] = word
-                
+
     def encode_str(self, sentence):
         tokens = []
         for word in sentence.split():
@@ -34,6 +41,8 @@ class Vocabulary():
                 token = self.bos_id
             elif word == '[end]':
                 token = self.eos_id
+            elif word == '<pad>':
+                token = self.pad_id
             else:    
                 token = self.stoi[word]         
 
@@ -44,7 +53,11 @@ class Vocabulary():
         ret = ""
         for token in tokens:
             if token in self.itos:
-                ret += self.itos[token] + " "
+                if token is self.bos_id\
+                    or token is self.pad_id\
+                        or token is self.eos_id:
+                    continue
+                ret += self.itos[token] + " "       
             else:
                 ret += "unknown " 
         return ret
@@ -58,41 +71,20 @@ class Vocabulary():
             
         return mask
 
-    def save_stoi_vocab(self):
-        f = open("./{0}-stoi-vocab.txt".format(self.type), "w")
-        for word in self.stoi:
-            line = word + ":" + str(self.stoi[word])
-            f.write(line)
-        f.close()
+    def save_vocab(self):
 
-    def save_itos_vocab(self):
-        f = open("./{0}-itos-vocab.txt".format(self.type), "w")
-        for token in self.itos:
-            line = token + ":" + str(self.itos[token])
-            f.write(line)
-        f.close()
+        with open('./{0}-stoi-vocab.pkl'.format(self.type), 'wb') as f:
+            pickle.dump(self.stoi, f)
+
+        with open('./{0}-itos-vocab.pkl'.format(self.type), 'wb') as f:
+            pickle.dump(self.itos, f)
         
-    def read_stoi_vocab(self, path):
-        f = open(path, "r")
-        while True:
-            line = f.readline()
-            if not line:
-                break
-                
-            vals = line.split(":")
-            self.stoi[vals[0]] = int(vals[1])
-        f.close()
+    def read_vocab(self):
+        with open('./{0}-stoi-vocab.pkl'.format(self.type), 'rb') as f:
+            self.stoi = pickle.load(f)
 
-    def read_itos_vocab(self, path):
-        f = open(path, "r")
-        while True:
-            line = f.readline()
-            if not line:
-                break
-                
-            vals = line.split(":")
-            self.itos[vals[0]] = int(vals[1])
-        f.close()
+        with open('./{0}-itos-vocab.pkl'.format(self.type), 'rb') as f:
+            self.itos = pickle.load(f)
 
 class TranslationDataset(data.Dataset):
     def __init__(self, src_tokens, tgt_tokens, max_len):
@@ -100,49 +92,12 @@ class TranslationDataset(data.Dataset):
         self.src_tokens = src_tokens
         self.tgt_tokens = tgt_tokens
         self.max_len = max_len
+        self.pad_id = 0
 
     def __len__(self):
         return len(self.src_tokens)
     
     def __getitem__(self, index):
-        src_data = self.src_tokens[index] + [0] * (self.max_len - len(self.src_tokens[index])) # post zero padding
-        tgt_data = self.tgt_tokens[index] + [0] * (self.max_len - len(self.tgt_tokens[index])) # post zero padding
+        src_data = self.src_tokens[index] + [self.pad_id] * (self.max_len - len(self.src_tokens[index])) # post zero padding
+        tgt_data = self.tgt_tokens[index] + [self.pad_id] * (self.max_len - len(self.tgt_tokens[index])) # post zero padding
         return torch.LongTensor(src_data), torch.LongTensor(tgt_data)
-
-def create_vocab(sentence, stoi_vocab, itos_vocab):
-    tokens = sentence.split()
-    for token in tokens:
-        if token not in stoi_vocab:
-            enc = len(stoi_vocab)+1
-            stoi_vocab[token]=enc
-            itos_vocab[enc] = token
-
-def tokenize_sentence(sentence, stoi_vocab):
-    tokens = sentence.split()
-    token_ids = []
-    for token in tokens:
-        token_ids.append(stoi_vocab[token])
-    return token_ids
-
-def clean_text(text):
-    text = normalize('NFD', text.lower())
-    text = re.sub('[^A-Za-z ]+', ' ', text)
-    return text
-
-def clean_prepare_text(text):
-    text = '[start] ' + clean_text(text) + ' [end]'
-    return text
-
-def make_mask(src, tgt, src_vocab, tgt_vocab, device):
-    src_mask = (src != src_vocab["<pad>"]).unsqueeze(1)
-    tgt_mask = (tgt != tgt_vocab["<pad>"]).unsqueeze(1)
-    
-    dec_attention_mask = torch.tril(torch.ones((1, tgt.shape[1], tgt.shape[1]), dtype=torch.bool)).to(device)
-    tgt_mask = tgt_mask & dec_attention_mask
-    return src_mask, tgt_mask
-
-def print_sample_data(df, sample):
-    for i, (src_sent, tgt_sent) in enumerate(zip(df['src'], df['tgt'])):
-        if i == sample:
-            break 
-        print(src_sent + "\t\t\t" + tgt_sent)
