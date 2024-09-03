@@ -40,10 +40,10 @@ df_tgt = df_tgt.rename(columns={0:"tgt"})
 df = pd.concat([df_src, df_tgt], axis=1)
 df = df.sample(frac=1, random_state=42)
 
-print("Sample Data")
-print("Source Language\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tTarget Language")
+print("Displaying Sample Data")
+print("\t\t\t\t\t\t\t\tSource Language\t\t\t\t\t\t\t\t\t\t\t\t\t\tTarget Language")
 print_sample_data(df, sample=5)
-print("Total Number of Sentences: {0}".format(len(df_src)))
+print("\nTotal Number of Sentences: {0}\n".format(len(df_src)))
 
 df['src'] = df['src'].apply(lambda text: clean_prepare_text(text))
 df['tgt'] = df['tgt'].apply(lambda text: clean_prepare_text(text))
@@ -65,7 +65,7 @@ for src_sent, tgt_sent in tqdm(zip(df['src'], df['tgt']), total=len(df['src']), 
     tgt_tokens.append(vocab_t.encode_str(tgt_sent))
 
 max_seq_length = max([max(len(src_token), len(tgt_token)) for src_token, tgt_token in zip(src_tokens, tgt_tokens)])
-print("Maximum Sequence Length: {}".format(max_seq_length))
+print("\nMaximum Sequence Length: {}\n".format(max_seq_length))
 
 # create train-val-test split
 train_ratio = 0.8
@@ -89,13 +89,16 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1)
 
+print("Loading Model")
 model = Transformer(embd_sze=512, src_vocab_sze=src_vocab_size, tgt_vocab_sze=tgt_vocab_size, max_seq_len=max_seq_length)
 model.to(device)
 print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameters())/1e6))
 
+model.load_state_dict(torch.load("./weights/model-iteration-02.pt", weights_only=True))
+
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 loss_func = torch.nn.NLLLoss().to(device)
-epochs = 1
+epochs = 5
 
 # model training
 for epoch in range(1, epochs+1):
@@ -156,4 +159,4 @@ for epoch in range(1, epochs+1):
     print("Epoch: {0} | Training Loss: {1} | Validation Loss: {2} | Epoch Time: {3}s".\
           format(epoch, round(train_loss/len(train_loader), 4), round(val_loss / len(val_loader), 4), round(end_time-start_time, 4)))
 
-torch.save(model.state_dict(), "./weights/model-iteration-01.pt")
+torch.save(model.state_dict(), "./weights/model-iteration-03.pt")

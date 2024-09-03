@@ -9,7 +9,7 @@ device = torch.device('mps')
 torch.manual_seed(1337)
 torch.mps.set_per_process_memory_fraction(0.0)
 
-max_seq_length = 23
+max_seq_length = 28
 vocab_s = Vocabulary("src")
 vocab_s.read_vocab()
 
@@ -24,7 +24,7 @@ model.to(device)
 model.eval()
 print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameters())/1e6))
 
-model.load_state_dict(torch.load("./weights/model-iteration-01.pt", weights_only=True))
+model.load_state_dict(torch.load("./weights/model-iteration-02.pt", weights_only=True))
 
 def inference(e_output, src_mask):
     tgt_input = torch.LongTensor([vocab_t.pad_id] * max_seq_length).to(device)
@@ -51,7 +51,7 @@ def inference(e_output, src_mask):
 
     return tgt_output
     
-src = "he likes bananas"
+src = "the weather is rainy"
 src = torch.LongTensor(vocab_s.encode_str(src)).to(device)
 src = src.reshape(1, -1)
 src_mask = vocab_s.get_mask(src)

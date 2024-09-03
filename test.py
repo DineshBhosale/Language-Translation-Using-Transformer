@@ -36,7 +36,7 @@ vocab_t = Vocabulary("tgt")
 vocab_t.generate_vocabulary(df['tgt'].values)
 
 src_vocab_size, tgt_vocab_size = len(vocab_s.stoi), len(vocab_t.stoi)
-print("Source Vocab Size is {0} and Target Vocab Size is {1}".format(src_vocab_size, tgt_vocab_size))
+print("Source Vocab Size is {0} and Target Vocab Size is {1}\n".format(src_vocab_size, tgt_vocab_size))
 
 # encode sentences into tokens
 for src_sent, tgt_sent in tqdm(zip(df['src'], df['tgt']), total=len(df['src']), desc="Encoding Sentences into tokens"):
@@ -44,7 +44,7 @@ for src_sent, tgt_sent in tqdm(zip(df['src'], df['tgt']), total=len(df['src']), 
     tgt_tokens.append(vocab_t.encode_str(tgt_sent))
 
 max_seq_length = max([max(len(src_token), len(tgt_token)) for src_token, tgt_token in zip(src_tokens, tgt_tokens)])
-print("Maximum Sequence Length: {}".format(max_seq_length))
+print("Maximum Sequence Length: {}\n".format(max_seq_length))
 
 # create train-val-test split
 train_ratio = 0.8
@@ -65,7 +65,7 @@ print("Number of parameters: {} M".format(sum(p.numel() for p in model.parameter
 
 model.to(device)
 model.eval()
-model.load_state_dict(torch.load("./weights/model-iteration-01.pt", weights_only=True))
+model.load_state_dict(torch.load("./weights/model-iteration-02.pt", weights_only=True))
 
 def inference(e_output, src_mask):
     tgt_input = torch.LongTensor([vocab_t.pad_id] * max_seq_length).to(device)
